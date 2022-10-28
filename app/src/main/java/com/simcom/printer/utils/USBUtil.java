@@ -36,6 +36,7 @@ public class USBUtil {
         usbManager = (UsbManager) mContext.getSystemService(Context.USB_SERVICE);
         mUsbEndpointOutMap = new HashMap();
         mUsbEndpointInMap = new HashMap();
+        mUsbDeviceConnectionMap = new HashMap();
     }
 
     public UsbDevice getDeviceByName(String deviceName) {
@@ -88,6 +89,7 @@ public class USBUtil {
             //获取UsbDeviceConnection
             UsbDeviceConnection connection = usbManager.openDevice(device);
             if (connection != null) {
+
                 if (connection.claimInterface(usbInterface, true)) {
                     for (int j = 0; j < usbInterface.getEndpointCount(); j++) {
                         UsbEndpoint endpoint = usbInterface.getEndpoint(j);
@@ -117,6 +119,26 @@ public class USBUtil {
                 data[i] = command.get(i);
             }
             int ret = connection.bulkTransfer(endpointOut, data, data.length, SENDING_TIME_OUT);
+            if (ret >= 0) {
+                return CODE_SUCCESS;
+            }
+
+            return CODE_ERROR;
+        } else {
+            return CODE_SUCCESS;
+        }
+
+    }
+
+    public int bulk(String deviceName, byte[] command, UsbDevice device) {
+        if (command != null) {
+            UsbEndpoint endpointOut = mUsbEndpointOutMap.get(deviceName);
+//            UsbDeviceConnection connection = mUsbDeviceConnectionMap.get(deviceName);
+            UsbDeviceConnection connection = usbManager.openDevice(device);
+            if (endpointOut == null || connection == null) {
+                return CODE_ERROR;
+            }
+            int ret = connection.bulkTransfer(endpointOut, command, command.length, SENDING_TIME_OUT);
             if (ret >= 0) {
                 return CODE_SUCCESS;
             }

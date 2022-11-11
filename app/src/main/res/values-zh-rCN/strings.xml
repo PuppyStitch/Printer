@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources tools:ignore="ExtraTranslation" xmlns:tools="http://schemas.android.com/tools">
+    <string name="app_name">Printer</string>
+    <string name="string_init">初始化</string>
+    <string name="string_begin_print">打印</string>
+    <string name="string_cut_paper">切纸</string>
+</resources>

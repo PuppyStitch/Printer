@@ -9,7 +9,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.AssetManager;
 import android.graphics.Bitmap;
-import android.graphics.Typeface;
 import android.hardware.usb.UsbConstants;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
@@ -22,6 +21,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -47,6 +48,7 @@ import com.simcom.printerlib.utils.QRCodeUtil;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.Hashtable;
 import java.util.Iterator;
 
 public class MainFragment extends Fragment {
@@ -131,8 +133,11 @@ public class MainFragment extends Fragment {
         getContext().registerReceiver(usbReceiver, filter);
 
         binding.message.setOnClickListener(v -> {
+
+
+
             enumeraterDevices();
-            //3)查找设备接口
+            //3)查找设备接口1
             getDeviceInterface();
             //4)获取设备endpoint
             assignEndpoint();
@@ -148,6 +153,14 @@ public class MainFragment extends Fragment {
 
 //            sendMessageToPoint(string.getBytes(StandardCharsets.UTF_8));
             sendMessageToPoint(bytes);
+
+            byte[] bs = new byte[4];
+            bs[0] = 0x1D;
+            bs[1] = 0x56;
+            bs[2] = 0x41;
+            bs[3] = 0x00;
+            sendMessageToPoint(bs);
+
 //            try {
 //                Bitmap bitmap = QRCodeUtil.createQRCode("This is for testing", BarcodeFormat.QR_CODE,
 //                        ErrorCorrectionLevel.M, 576);
@@ -156,8 +169,16 @@ public class MainFragment extends Fragment {
 //                e.printStackTrace();
 //            }
         });
-    }
 
+        binding.message2.setOnClickListener(v -> {
+//            byte[] bs = new byte[4];
+//            bs[0] = 0x1D;
+//            bs[1] = 0x56;
+//            bs[2] = 0x41;
+//            bs[3] = 0x00;
+//            sendMessageToPoint(bs);
+        });
+    }
 
 
 
@@ -252,7 +273,7 @@ public class MainFragment extends Fragment {
         printerLayout.addText(secondTPL);
 
         TextPrintLine toolLineTPL1 = new TextPrintLine();
-        toolLineTPL1.setContent("* * * * * * * * * * * * * * * * * *");
+        toolLineTPL1.setContent("* * * * * * * * * * * * * * * * *");
         printerLayout.addText(toolLineTPL1);
 
         TextPrintLine toolLineTPL = new TextPrintLine();
@@ -327,7 +348,7 @@ public class MainFragment extends Fragment {
         printerLayout.addView(forthMTPL);
 
         TextPrintLine toolLineTPL21 = new TextPrintLine();
-        toolLineTPL21.setContent("* * * * * * * * * * * * * * * * * *");
+        toolLineTPL21.setContent("* * * * * * * * * * * * * * * * *");
         printerLayout.addText(toolLineTPL21);
 
         TextPrintLine original = new TextPrintLine();
@@ -347,7 +368,7 @@ public class MainFragment extends Fragment {
         printerLayout.addText(toolLineTPL01);
 
         TextPrintLine toolLineTPL4 = new TextPrintLine();
-        toolLineTPL4.setContent("北京市朝阳区通天苑小区A17号楼3单元6楼15号");
+        toolLineTPL4.setContent("北京市朝阳区天通苑小区A17号楼3单元6楼15号");
         toolLineTPL4.setSize(maxSize);
         printerLayout.addText(toolLineTPL4);
 

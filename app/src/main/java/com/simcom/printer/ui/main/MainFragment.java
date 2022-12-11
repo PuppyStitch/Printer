@@ -454,7 +454,7 @@ public class MainFragment extends Fragment {
             } else if (retData[0] >> 5 == 1) {
                 Log.e(TAG, "over heat");
             }
-            Log.e(TAG, "read " + retData[0]);
+            Log.e(TAG, "read " + Integer.toBinaryString(retData[0]));
         }
 
         myLock.unlock();

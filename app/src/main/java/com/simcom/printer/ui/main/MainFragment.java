@@ -1,5 +1,6 @@
 package com.simcom.printer.ui.main;
 
+import android.annotation.SuppressLint;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -14,6 +15,8 @@ import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
 import android.hardware.usb.UsbRequest;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -35,7 +38,6 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 
 public class MainFragment extends Fragment {
@@ -114,6 +116,27 @@ public class MainFragment extends Fragment {
         return new MainFragment();
     }
 
+    private final int MSG_ENABLE_BTN = 0;
+    private final int MSG_DISABLE_BTN = 1;
+
+    @SuppressLint("HandlerLeak")
+    private Handler mHandler = new Handler() {
+        @Override
+        public void handleMessage(@NonNull Message msg) {
+            super.handleMessage(msg);
+
+            switch (msg.what) {
+                case MSG_ENABLE_BTN:
+                    enableBtn();
+                    break;
+
+                case MSG_DISABLE_BTN:
+                    disableBtn();
+                    break;
+            }
+        }
+    };
+
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
@@ -132,8 +155,6 @@ public class MainFragment extends Fragment {
         getContext().registerReceiver(usbReceiver, filter);
 
         binding.message.setOnClickListener(v -> {
-
-
             enumerateDevices();
             //3)查找设备接口1
             getDeviceInterface();
@@ -144,34 +165,14 @@ public class MainFragment extends Fragment {
             openDevice();
         });
 
-
-        class MyThread extends Thread {
-            @Override
-            public void run() {
-
-//                super.run();
-                synchronized (lock) {
-                    try {
-                        sendMessageToPoint(bytes);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-        }
-//        Thread thread = new Thread() {
-//            @Override
-//            public void run() {
-//                super.run();
-//                sendMessageToPoint(bytes);
-//            }
-//        };
-
         binding.message1.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
 
-                v.setEnabled(false);
+//                v.setEnabled(false);
+                mHandler.sendEmptyMessage(MSG_DISABLE_BTN);
+                mHandler.sendEmptyMessageDelayed(MSG_ENABLE_BTN, 2500);
+//                v.setBackgroundColor(Color.GRAY);
 
                 PrinterLayout.ViewToBitmapListener listener = null;
 
@@ -182,8 +183,7 @@ public class MainFragment extends Fragment {
                 if (bytes != null) {
                     thread.start();
                 } else {
-
-                     listener = new PrinterLayout.ViewToBitmapListener() {
+                    listener = new PrinterLayout.ViewToBitmapListener() {
                         @Override
                         public void success(Bitmap bitmap) {
                             bytes = DataUtils.sendBWImage(bitmap, getContext());
@@ -199,53 +199,34 @@ public class MainFragment extends Fragment {
                     PrintUtil.meiTuan(getContext(), listener);
                 }
 
-//            openDevice();
-
-
-                try {
-                    v.setEnabled(futureTask.get());
-                } catch (ExecutionException | InterruptedException e) {
-                    e.printStackTrace();
-                }
-
-//                ExecutorService singleThread = Executors.newSingleThreadExecutor();
-//
-//                singleThread.submit(new CustomCallable());
-
-//                singleThread.execute(new Runnable() {
-//                    @Override
-//                    public void run() {
-//                        sendMessageToPoint(bytes);
+//                try {
+////                    v.setEnabled(futureTask.get());
+//                    while (!futureTask.get()) {
+//                        mHandler.sendEmptyMessage(MSG_ENABLE_BTN);
 //                    }
-//                });
-
-//            sendMessageToPoint(string.getBytes(StandardCharsets.UTF_8));
-//            sendMessageToPoint(bytes);
-
-//                MyThread newThread = new MyThread();
-//                newThread.start();
-//                thread.start();
-
-
+//                } catch (ExecutionException | InterruptedException e) {
+//                    e.printStackTrace();
+//                }
             }
         });
 
         binding.message2.setOnClickListener(v -> {
-//            byte[] bs = new byte[4];
-//            bs[0] = 0x1D;
-//            bs[1] = 0x56;
-//            bs[2] = 0x41;
-//            bs[3] = 0x00;
-//            sendMessageToPoint(bs);
+            try {
+                sendMessageToPoint(PrintCMD.queryStatus());
+                Thread.sleep(50);
+                readMessageFromPoint();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
         });
     }
 
-    class ResultCallable implements Callable<Boolean> {
+    private void disableBtn() {
+        binding.message1.setEnabled(false);
+    }
 
-        @Override
-        public Boolean call() throws Exception {
-            return null;
-        }
+    private void enableBtn() {
+        binding.message1.setEnabled(true);
     }
 
     public class Lock {
@@ -281,19 +262,18 @@ public class MainFragment extends Fragment {
 
             synchronized (this) {
 
-                boolean isReceived = true;
+                boolean isReceived;
                 Subcontract subcontract = new Subcontract();
+
+//                subcontract.printLog(bytes);
+
                 subcontract.goSubcontract(bytes);
 
                 for (int i = 0; i < subcontract.packageCount; i++) {
-                    if (isReceived) {
-                        sendMessageToPoint(subcontract.getBytes()[i]);
-                    } else {
-                        Log.e(TAG, "never receive msg");
-                        return false;
-                    }
-
+//                    Thread.sleep(50);
+                    sendMessageToPoint(subcontract.getBytes()[i]);
                     isReceived = false;
+
                     time = 0;
 
                     while (time < 10000) {
@@ -301,8 +281,10 @@ public class MainFragment extends Fragment {
                             isReceived = true;
                             break;
                         } else {
+//                            readMessageFromPoint();
+                            Thread.sleep(50);
+                            Log.e("readMsg", "send status request");
                             sendMessageToPoint(PrintCMD.queryStatus());
-                            Thread.sleep(200);
                         }
                         time++;
                     }
@@ -313,6 +295,7 @@ public class MainFragment extends Fragment {
                 }
                 sendMessageToPoint(PrintCMD.cutPaper());
             }
+            Thread.sleep(100);
             return true;
         }
     }
@@ -428,6 +411,7 @@ public class MainFragment extends Fragment {
         myLock.lock();
         int i = myDeviceConnection.bulkTransfer(epBulkOut, buffer, buffer.length, 0);
         System.out.println("send result-->:::" + i);
+        Log.e(TAG, "sendMessageToPoint " + i);
         myLock.unlock();
     }
 
@@ -447,14 +431,17 @@ public class MainFragment extends Fragment {
         usbRequest.queue(byteBuffer, inMax);
         if (myDeviceConnection.requestWait() == usbRequest) {
             byte[] retData = byteBuffer.array();
+            Log.e("readMsg", "the retData's length: " + retData.length);
             if (retData[0] == 0) {
                 isNormal = true;
-            } else if (retData[0] >> 7 == 1) {
-                Log.e(TAG, "no paper");
-            } else if (retData[0] >> 5 == 1) {
-                Log.e(TAG, "over heat");
+            } else if (retData[0] >> 6 == 1) {
+//                Log.e("readMsg", "no paper");
+            } else if (retData[0] >> 4 == 1) {
+//                Log.e("readMsg", "over heat");
             }
-            Log.e(TAG, "read " + Integer.toBinaryString(retData[0]));
+//            String s = new String(retData);
+//            Log.e("readMsg", "retData " + s);
+            Log.e("readMsg", "read " + Integer.toBinaryString(retData[0]));
         }
 
         myLock.unlock();

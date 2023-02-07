@@ -2,6 +2,8 @@ package com.simcom.printer.poscommand;
 
 public class PrintCMD {
 
+    public static boolean isSecond = false;
+
     public static byte[] queryStatus() {
         byte[] bytes = new byte[3];
         bytes[0] = (byte) 0x10;
@@ -23,6 +25,14 @@ public class PrintCMD {
 //            bytes[j][240 * 72 + 8 + 4 - 3] = 0x76;
 //            bytes[j][240 * 72 + 8 + 4 - 2] = 0x30;
 //            bytes[j][240 * 72 + 8 + 4 - 1] = 0x00;
+    }
+
+    public static byte[] getVersionInfo() {
+        byte[] bytes = new byte[3];
+        bytes[0] = 0x1D;
+        bytes[1] = 0x49;
+        bytes[2] = 0x41;
+        return bytes;
     }
 
 }

@@ -49,7 +49,7 @@ public class MainFragment extends Fragment {
     FragmentMainBinding binding;
     byte[] bytes;
 
-    String[] ticketStr = new String[4];
+    String[] ticketStr = new String[5];
     int spinnerPosition = 0;
 
     /**
@@ -88,6 +88,7 @@ public class MainFragment extends Fragment {
     private PendingIntent permissionIntent;
     private static final String ACTION_USB_PERMISSION = "com.android.example.USB_PERMISSION";
     private UsbDevice device;
+    private boolean hasInit = false;
 
     String string = "123454654\n" +
             "asdfadf \n" +
@@ -161,6 +162,7 @@ public class MainFragment extends Fragment {
         ticketStr[1] = "小票2";
         ticketStr[2] = "小票3";
         ticketStr[3] = "小票4";
+        ticketStr[4] = "黑块";
 
         ticketAdapter = new SpinnerAdapter(getContext(), ticketStr);
         binding.spinnerTicket.setAdapter(ticketAdapter);
@@ -187,11 +189,19 @@ public class MainFragment extends Fragment {
             getDeviceInterface();
             //4)获取设备endpoint
             assignEndpoint();
+
+            hasInit = true;
             //5)打开conn连接通道
 //            sendMessageToPoint(new byte[]{0x1b, 0x61, 0x00});
         });
 
         binding.message1.setOnClickListener(v -> {
+
+            if (!hasInit) {
+                Toast.makeText(getActivity(), "PLZ INIT FIRST!!!", Toast.LENGTH_LONG).show();
+                return;
+            }
+
             mHandler.sendEmptyMessage(MSG_DISABLE_BTN);
 
             openDevice();
@@ -203,6 +213,17 @@ public class MainFragment extends Fragment {
             Thread thread = new Thread(futureTask);
 
             bytes = DataUtils.readFileFromAssets(getContext(), null, getFileName());
+
+            if (spinnerPosition == 4) {
+                byte[] bs = new byte[10 * 240 * 72];
+
+                for (int j = 0; j < 7 * 240 * 72; j++) {
+                    bs[j] = (byte) 0xff;
+                }
+
+                bytes = bs;
+            }
+
             thread.start();
 
 //            if (bytes != null) {
@@ -326,6 +347,8 @@ public class MainFragment extends Fragment {
                         return false;
                     }
                 }
+                sendMessageToPoint(PrintCMD.getPreInfo());
+                Thread.sleep(50);
                 sendMessageToPoint(PrintCMD.cutPaper());
             }
             mHandler.sendEmptyMessageDelayed(MSG_ENABLE_BTN, 1000);

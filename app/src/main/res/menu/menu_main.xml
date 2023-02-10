@@ -1,0 +1,22 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:context=".MainActivity2">
+<!--    <item-->
+<!--        android:id="@+id/action_settings"-->
+<!--        android:orderInCategory="100"-->
+<!--        android:title="settings"-->
+<!--        app:showAsAction="never" />-->
+
+    <item
+        android:id="@+id/item_update_version"
+        android:orderInCategory="100"
+        android:title="更新固件版本"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/item_check_version"
+        android:orderInCategory="100"
+        android:title="查看版本信息"
+        app:showAsAction="never" />
+</menu>

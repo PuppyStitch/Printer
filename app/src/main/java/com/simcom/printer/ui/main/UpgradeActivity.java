@@ -1,5 +1,6 @@
 package com.simcom.printer.ui.main;
 
+import android.annotation.SuppressLint;
 import android.content.ActivityNotFoundException;
 import android.content.ContentUris;
 import android.content.Context;
@@ -110,17 +111,24 @@ public class UpgradeActivity extends AppCompatActivity {
 
                     openDevice();
 
-                    sendMessageToPoint(PrintCMD.requestUpdateFW());         // 进入download mode
+                    //sendMessageToPoint(PrintCMD.requestUpdateFW());         // 进入download mode
+                    sendData(PrintCMD.requestUpdateFW());
                     Thread.sleep(200);
-                    sendMessageToPoint(PrintCMD.getFirstFrame());           // 发送program
+//                    sendMessageToPoint(PrintCMD.getFirstFrame());           // 发送program
+                    sendData(PrintCMD.getFirstFrame());
                     UpgradeCon upgradeCon = new UpgradeCon();
                     upgradeCon.go(DataUtils.readFileFromAssets(mContext, null,
-                            "s05_factory_1.2.1.bin"));
-                    for (int i = 0; i < upgradeCon.packages; i++) {
-                        sendMessageToPoint(upgradeCon.getBs()[i]);
-                        Thread.sleep(100);
+                            "s05.bin"));           // s05_1.2.1.bin
+                    Log.d("SEND SIZE", upgradeCon.packages + "");
+                    for (int i = 0; i <= upgradeCon.packages; i++) {
+//                        sendMessageToPoint(upgradeCon.getBs()[i]);
+                        Log.d("Send Index", i + "");
+                        sendData(upgradeCon.getBs()[i]);
+                        Thread.sleep(50);
                     }
-                    readMessageFromPoint();
+                    Thread.sleep(200);
+                    sendData(PrintCMD.getEndFrame());
+//                    readMessageFromPoint();
 
                 } catch (InterruptedException e) {
                     e.printStackTrace();
@@ -129,6 +137,27 @@ public class UpgradeActivity extends AppCompatActivity {
         });
 
         // request permission and connect to device
+    }
+
+    @SuppressLint("NewApi")
+    public void sendData(byte[] buffer) {
+        byte[] receiveBuf = new byte[64];
+        if (myDeviceConnection == null)
+            return;
+        int res = myDeviceConnection.bulkTransfer(epBulkOut, buffer, buffer.length, 0);
+        Log.d("Sent", res + "");
+        if (res >= 0) {
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            int readRes = myDeviceConnection.bulkTransfer(epBulkIn, receiveBuf, 64, 50);
+            Log.d("Read", readRes + ": " + byteToHexStr(receiveBuf[0]));
+            Log.d("Received: ", byteToHexStr(receiveBuf[0]));
+        } else {
+            Log.d("Send", "send failed");
+        }
     }
 
     @Override
@@ -158,50 +187,6 @@ public class UpgradeActivity extends AppCompatActivity {
         sb.append(hexCode[(b) & 0xF]);
         return sb.toString();
     }
-
-    private synchronized boolean readMessageFromPoint() throws InterruptedException {
-
-//        myLock.lock();
-
-        boolean isNormal = false;
-
-        int outMax = epBulkOut.getMaxPacketSize();
-
-        int inMax = epBulkIn.getMaxPacketSize();
-
-        byte[] recvbuf = new byte[64];
-
-        myDeviceConnection.bulkTransfer(epBulkIn, recvbuf, 64, 50);
-
-        Log.e(TAG, "Received " + byteToHexStr(recvbuf[0]));
-
-        if (recvbuf[0] == 0) {
-            isNormal = true;
-        } else if ((recvbuf[0] & 0x01) != 0) {
-            Log.e("readMsg", "no paper");
-        } else if ((recvbuf[0] & 0x04) != 0) {
-            Log.e("readMsg", "over heat");
-        }
-
-
-        return isNormal;
-    }
-
-    private void goPack(byte[] bs) {
-
-        byte[][] bytes = new byte[256][192];
-
-        bytes[0][0] = 0x01;
-        bytes[0][1] = 0x00;
-        bytes[0][2] = (byte) 0xff;
-
-
-        int index = 1;
-        for (int i = 0; i < bs.length; i++) {
-            bytes[index][i % 192] = bs[i];
-        }
-    }
-
 
     // 调用系统文件管理器，选择文件
     private void chooseFile() {

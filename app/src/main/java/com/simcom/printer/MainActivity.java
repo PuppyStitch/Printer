@@ -34,9 +34,9 @@ public class MainActivity extends AppCompatActivity {
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         switch (item.getItemId()) {
             case R.id.item_check_version:
-                startActivity(new Intent(this, UpgradeActivity.class));
                 break;
             case R.id.item_update_version:
+                startActivity(new Intent(this, UpgradeActivity.class));
                 break;
         }
         return true;

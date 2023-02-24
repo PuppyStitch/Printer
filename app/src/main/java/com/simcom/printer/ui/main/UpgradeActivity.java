@@ -1,25 +1,21 @@
 package com.simcom.printer.ui.main;
 
-import android.annotation.SuppressLint;
 import android.content.ActivityNotFoundException;
+import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
-import android.hardware.usb.UsbConstants;
-import android.hardware.usb.UsbDevice;
-import android.hardware.usb.UsbDeviceConnection;
-import android.hardware.usb.UsbEndpoint;
-import android.hardware.usb.UsbInterface;
-import android.hardware.usb.UsbManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.FileUtils;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
+import android.webkit.MimeTypeMap;
 import android.widget.Button;
 import android.widget.Toast;
 
@@ -27,16 +23,21 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.simcom.printer.PrintApplication;
 import com.simcom.printer.R;
 import com.simcom.printer.poscommand.PrintCMD;
+import com.simcom.printer.utils.PrintUtil;
 import com.simcom.printer.utils.UpgradeCon;
 import com.simcom.printerlib.utils.DataUtils;
 
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
-import java.util.HashMap;
-import java.util.Iterator;
 
 public class UpgradeActivity extends AppCompatActivity {
 
@@ -46,42 +47,7 @@ public class UpgradeActivity extends AppCompatActivity {
 
     private byte[][] bytes = new byte[256][192];
 
-    /**
-     * 满足的设备
-     */
-    private UsbDevice myUsbDevice;
-
-    /**
-     * usb接口
-     */
-    private UsbInterface usbInterface;
-
-    /**
-     * 块输出端点
-     */
-    private UsbEndpoint epBulkOut;
-    private UsbEndpoint epBulkIn;
-
-    /**
-     * 控制端点
-     */
-    private UsbEndpoint epControl;
-
-    /**
-     * 中断端点
-     */
-    private UsbEndpoint epIntEndpointOut;
-    private UsbEndpoint epIntEndpointIn;
-
-    /**
-     * 连接
-     */
-    private UsbDeviceConnection myDeviceConnection;
-
-    private UsbManager usbManager;
-    private UsbDevice device;
-
-    private Button upgrade;
+    private Button upgrade, file;
 
     Context mContext;
 
@@ -90,85 +56,143 @@ public class UpgradeActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_upgrade);
         upgrade = findViewById(R.id.upgrade_btn);
+        file = findViewById(R.id.file_btn);
         mContext = this;
-        usbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
 
-        enumerateDevices();
-        //3)查找设备接口1
-        getDeviceInterface();
-        //4)获取设备endpoint
-        assignEndpoint();
-
-        upgrade.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                try {
-
-                    openDevice();
-
-                    //sendMessageToPoint(PrintCMD.requestUpdateFW());         // 进入download mode
-                    sendData(PrintCMD.requestUpdateFW());
-                    Thread.sleep(200);
-//                    sendMessageToPoint(PrintCMD.getFirstFrame());           // 发送program
-                    sendData(PrintCMD.getFirstFrame());
-                    UpgradeCon upgradeCon = new UpgradeCon();
-                    upgradeCon.go(DataUtils.readFileFromAssets(mContext, null,
-                            "s05.bin"));           // s05_1.2.1.bin
-                    Log.d("SEND SIZE", upgradeCon.packages + "");
-                    for (int i = 0; i <= upgradeCon.packages; i++) {
-//                        sendMessageToPoint(upgradeCon.getBs()[i]);
-                        Log.d("Send Index", i + "");
-                        sendData(upgradeCon.getBs()[i]);
-                        Thread.sleep(50);
-                    }
-                    Thread.sleep(200);
-                    sendData(PrintCMD.getEndFrame());
-//                    readMessageFromPoint();
-
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
+        file.setOnClickListener(v -> {
+            chooseFile();
         });
 
-        // request permission and connect to device
+        upgrade.setOnClickListener(v -> {
+            Thread thread = new Thread(runnable);
+            thread.start();
+        });
     }
 
-    @SuppressLint("NewApi")
-    public void sendData(byte[] buffer) {
-        byte[] receiveBuf = new byte[64];
-        if (myDeviceConnection == null)
-            return;
-        int res = myDeviceConnection.bulkTransfer(epBulkOut, buffer, buffer.length, 0);
-        Log.d("Sent", res + "");
-        if (res >= 0) {
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-            int readRes = myDeviceConnection.bulkTransfer(epBulkIn, receiveBuf, 64, 50);
-            Log.d("Read", readRes + ": " + byteToHexStr(receiveBuf[0]));
-            Log.d("Received: ", byteToHexStr(receiveBuf[0]));
-        } else {
-            Log.d("Send", "send failed");
-        }
-    }
+//    @SuppressLint("NewApi")
+//    public void sendData(byte[] buffer) {
+//        byte[] receiveBuf = new byte[64];
+//        if (myDeviceConnection == null)
+//            return;
+//        int res = myDeviceConnection.bulkTransfer(epBulkOut, buffer, buffer.length, 0);
+//        Log.d("Sent", res + "");
+//        if (res >= 0) {
+//            try {
+//                Thread.sleep(50);
+//            } catch (InterruptedException e) {
+//                e.printStackTrace();
+//            }
+//            int readRes = myDeviceConnection.bulkTransfer(epBulkIn, receiveBuf, 64, 50);
+//            Log.d("Read", readRes + ": " + byteToHexStr(receiveBuf[0]));
+//            Log.d("Received: ", byteToHexStr(receiveBuf[0]));
+//        } else {
+//            Log.d("Send", "send failed");
+//        }
+//    }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         if (resultCode == RESULT_OK) {
             if (requestCode == CHOOSE_FILE_CODE) {
                 Uri uri = data.getData();
+                byte[] bs = readFile(uriToFileApiQ(uri, this));
+                if (bs.length > 0) {
+                    file.setText("文件读取成功");
+                }
             }
         }
         super.onActivityResult(requestCode, resultCode, data);
     }
+
+    public static File uriToFileApiQ(Uri uri, Context context) {
+        File file = null;
+        if (uri == null)
+            return null;
+        //android10以上转换
+        if (uri.getScheme().equals(ContentResolver.SCHEME_FILE)) {
+            file = new File(uri.getPath());
+        } else if (uri.getScheme().equals(ContentResolver.SCHEME_CONTENT)) {
+            //把文件复制到沙盒目录
+            ContentResolver contentResolver = context.getContentResolver();
+            String displayName = System.currentTimeMillis() + Math.round((Math.random() + 1) * 1000)
+                    + "." + MimeTypeMap.getSingleton().getExtensionFromMimeType(contentResolver.getType(uri));
+
+            try {
+                InputStream is = contentResolver.openInputStream(uri);
+                File cache = new File(context.getCacheDir().getAbsolutePath(), displayName);
+                FileOutputStream fos = new FileOutputStream(cache);
+                FileUtils.copy(is, fos);
+                file = cache;
+                fos.close();
+                is.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return file;
+    }
+
+    public static byte[] readFile(File f) {
+        try {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream((int)f.length());
+            BufferedInputStream in = new BufferedInputStream(new FileInputStream(f));
+            int buf_size = 100000;
+            byte[] buffer = new byte[buf_size];
+            boolean var6 = false;
+
+            int len;
+            while(-1 != (len = in.read(buffer, 0, buf_size))) {
+                bos.write(buffer, 0, len);
+            }
+
+            return bos.toByteArray();
+        } catch (IOException var7) {
+            var7.printStackTrace();
+            return null;
+        }
+    }
+
+    Runnable runnable = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                byte[] res;
+//                PrintApplication.getInstance().getPrinterPort().sendMsg(PrintCMD.requestUpdateFW());
+//                Thread.sleep(5000);
+//                PrintApplication.getInstance().init();
+//                PrintApplication.getInstance().getPrinterPort().readMsg();
+                PrintApplication.getInstance().getPrinterPort().sendMsg(PrintCMD.getFirstFrame());
+                PrintApplication.getInstance().getPrinterPort().readMsg();
+
+                UpgradeCon upgradeCon = new UpgradeCon();
+                upgradeCon.go(DataUtils.readFileFromAssets(mContext, null,
+                        "s05_1.2.1(1).bin"));           // s05_1.2.1.bin
+                Log.d("SEND SIZE", upgradeCon.packages + "");
+                for (int i = 0; i <= upgradeCon.packages; i++) {
+                    Log.d("Send Index", i + "");
+                    PrintApplication.getInstance().getPrinterPort().sendMsg(upgradeCon.getBs()[i]);
+                    Thread.sleep(50);
+                    res = PrintApplication.getInstance().getPrinterPort().readMsg();
+                    Log.d(TAG, "index: " + i  + " " + PrintUtil.byteToHexStr(res[0]));
+                    Thread.sleep(50);
+                }
+                Thread.sleep(200);
+                PrintApplication.getInstance().getPrinterPort().sendMsg(PrintCMD.getEndFrame());
+                Thread.sleep(50);
+                res = PrintApplication.getInstance().getPrinterPort().readMsg();
+                Log.d(TAG, "end res: " + PrintUtil.byteToHexStr(res[0]));
+
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    };
+
 
     private void handleBytes(byte[] bytes) {
 
@@ -308,94 +332,4 @@ public class UpgradeActivity extends AppCompatActivity {
     public static boolean isMediaDocument(Uri uri) {
         return "com.android.providers.media.documents".equals(uri.getAuthority());
     }
-
-    public void enumerateDevices() {
-        HashMap<String, UsbDevice> deviceList = usbManager.getDeviceList();
-        Iterator<UsbDevice> deviceIterator = deviceList.values().iterator();
-        while (deviceIterator.hasNext()) {
-            device = deviceIterator.next();
-            System.out.println("result-->" + device.getVendorId() + ":" + device.getProductId());
-            if (device.getVendorId() == 6645 && device.getProductId() == 12869) {
-                myUsbDevice = device; // 获取USBDevice
-//                usbManager.requestPermission(myUsbDevice, permissionIntent);
-            }
-        }
-    }
-
-    private void getDeviceInterface() {
-        if (myUsbDevice != null) {
-            System.out.println("result-->:" + myUsbDevice.getInterfaceCount());
-            usbInterface = myUsbDevice.getInterface(0);
-            System.out.println("result-->成功获得设备接口:" + usbInterface.getId());
-        }
-    }
-
-    private void assignEndpoint() {
-        if (usbInterface != null) {
-            for (int i = 0; i < usbInterface.getEndpointCount(); i++) {
-                UsbEndpoint ep = usbInterface.getEndpoint(i);
-                switch (ep.getType()) {
-                    case UsbConstants.USB_ENDPOINT_XFER_BULK://块
-                        if (UsbConstants.USB_DIR_OUT == ep.getDirection()) {//输出
-                            epBulkOut = ep;
-                            System.out.println("result-->Find the BulkEndpointOut," + "index:" + i + "," + "使用端点号：" + epBulkOut.getEndpointNumber());
-                        } else {
-                            epBulkIn = ep;
-                            System.out.println("result-->Find the BulkEndpointIn:" + "index:" + i + "," + "使用端点号：" + epBulkIn.getEndpointNumber());
-                        }
-                        break;
-                    case UsbConstants.USB_ENDPOINT_XFER_CONTROL://控制
-                        epControl = ep;
-                        System.out.println("result-->find the ControlEndPoint:" + "index:" + i + "," + epControl.getEndpointNumber());
-                        break;
-                    case UsbConstants.USB_ENDPOINT_XFER_INT://中断
-                        if (ep.getDirection() == UsbConstants.USB_DIR_OUT) {//输出
-                            epIntEndpointOut = ep;
-                            System.out.println("result-->find the InterruptEndpointOut:" + "index:" + i + "," + epIntEndpointOut.getEndpointNumber());
-                        }
-                        if (ep.getDirection() == UsbConstants.USB_DIR_IN) {
-                            epIntEndpointIn = ep;
-                            System.out.println("result-->find the InterruptEndpointIn:" + "index:" + i + "," + epIntEndpointIn.getEndpointNumber());
-                        }
-                        break;
-                }
-            }
-        }
-    }
-
-    public void openDevice() {
-        if (usbInterface != null) {//接口是否为null
-            // 在open前判断是否有连接权限；对于连接权限可以静态分配，也可以动态分配权限
-            UsbDeviceConnection conn = null;
-            if (usbManager.hasPermission(myUsbDevice)) {
-                //有权限，那么打开
-                conn = usbManager.openDevice(myUsbDevice);
-                if (null == conn) {
-                    Toast.makeText(this, "不能连接到设备", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                //打开设备
-                if (conn.claimInterface(usbInterface, true)) {
-                    myDeviceConnection = conn;
-                    // 到此你的android设备已经连上zigbee设备
-                    System.out.println("result-->open设备成功！");
-                } else {
-                    System.out.println("result-->无法打开连接通道。");
-                    Toast.makeText(this, "无法打开连接通道。", Toast.LENGTH_SHORT).show();
-                    conn.close();
-                }
-            } else {
-                Toast.makeText(this, "没有权限", Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-
-    public synchronized void sendMessageToPoint(byte[] buffer) {
-//        myLock.lock();
-        int i = myDeviceConnection.bulkTransfer(epBulkOut, buffer, buffer.length, 0);
-        System.out.println("send result-->:::" + i);
-        Log.e(TAG, "sendMessageToPoint " + i);
-//        myLock.unlock();
-    }
-
 }

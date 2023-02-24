@@ -9,6 +9,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -16,8 +17,10 @@ import androidx.fragment.app.Fragment;
 
 import com.simcom.printer.PrintApplication;
 import com.simcom.printer.SpinnerAdapter;
+import com.simcom.printer.database.printersp.SPUtil;
 import com.simcom.printer.databinding.FragmentMainBinding;
 import com.simcom.printer.poscommand.PrintCMD;
+import com.simcom.printer.utils.PrintUtil;
 import com.simcom.printer.utils.Subcontract;
 import com.simcom.printerlib.printview.PrinterLayout;
 import com.simcom.printerlib.utils.DataUtils;
@@ -29,28 +32,32 @@ public class MainFragment extends Fragment {
 
     private static final String TAG = "MainFragment";
 
-    private static final char[] hexCode = "0123456789ABCDEF".toCharArray();
-
     private MainViewModel mViewModel;
 
     FragmentMainBinding binding;
-    byte[] bytes;
+    private byte[] bytes;
 
-    String[] ticketStr = new String[5];
-    int spinnerPosition = 0;
+    private String[] ticketStr = new String[5];
+    private int spinnerPosition = 0;
+    private SpinnerAdapter ticketAdapter;
 
-    SpinnerAdapter ticketAdapter;
+    private volatile boolean shouldStop = false;
 
+    private int successTime = 0, failedTime = 0, total = 0;
 
     public static MainFragment newInstance() {
         return new MainFragment();
     }
 
-    private final int MSG_ENABLE_BTN = 0;
-    private final int MSG_DISABLE_BTN = 1;
-    private final int MSG_NO_PAPER = 2;
-    private final int MSG_OVER_HEAT = 3;
-    private final int MSG_SET_TIPS_INVISIBILITY = 4;
+    private final int MSG_ENABLE_BTN = 1000;
+    private final int MSG_DISABLE_BTN = 1001;
+    private final int MSG_NO_PAPER = 1002;
+    private final int MSG_OVER_HEAT = 1003;
+    private final int MSG_SET_TIPS_INVISIBILITY = 1004;
+    private final int MSG_UPDATE_STATISTIC = 1005;
+    private final int MSG_RESET = 1006;
+
+    private int intervalTime = 5 * 1000;
 
     @SuppressLint("HandlerLeak")
     private Handler mHandler = new Handler() {
@@ -74,6 +81,12 @@ public class MainFragment extends Fragment {
                     break;
                 case MSG_SET_TIPS_INVISIBILITY:
                     hideToastTips();
+                    break;
+                case MSG_UPDATE_STATISTIC:
+                    updateStatistic();
+                    break;
+                case MSG_RESET:
+                    reset();
                     break;
             }
         }
@@ -115,8 +128,8 @@ public class MainFragment extends Fragment {
 
             mHandler.sendEmptyMessage(MSG_DISABLE_BTN);
             PrinterLayout.ViewToBitmapListener listener = null;
-            CustomCallable customCallable = new CustomCallable();
-            FutureTask<Boolean> futureTask = new FutureTask<>(customCallable);
+            SingleTaskCallable singleTaskCallable = new SingleTaskCallable();
+            FutureTask<Boolean> futureTask = new FutureTask<>(singleTaskCallable);
             Thread thread = new Thread(futureTask);
 
             bytes = DataUtils.readFileFromAssets(getContext(), null, getFileName());
@@ -154,8 +167,19 @@ public class MainFragment extends Fragment {
         });
 
         binding.btnPrintContinue.setOnClickListener(v -> {
-            CustomCallable customCallable = new CustomCallable();
-            FutureTask<Boolean> futureTask = new FutureTask<>(customCallable);
+
+            shouldStop = false;
+
+            if (!setTime()) {
+                return;
+            }
+
+            if (binding.etInterval.getText() != null) {
+                intervalTime = Integer.parseInt(binding.etInterval.getText().toString()) * 1000;
+            }
+
+            MultiTasksCallable multiTasksCallable = new MultiTasksCallable();
+            FutureTask<Boolean> futureTask = new FutureTask<>(multiTasksCallable);
             Thread thread = new Thread(futureTask);
 
             bytes = DataUtils.readFileFromAssets(getContext(), null, getFileName());
@@ -170,6 +194,46 @@ public class MainFragment extends Fragment {
 
             thread.start();
         });
+
+        binding.btnStop.setOnClickListener(v -> {
+            shouldStop = true;
+        });
+
+        binding.btnReset.setOnClickListener(v -> {
+            shouldStop = true;
+            mHandler.sendEmptyMessageDelayed(MSG_RESET, 2000);
+        });
+    }
+
+    private boolean setTime() {
+        if (binding.etContinue.getText().equals("") || binding.etContinue.getText() == null) {
+            Toast.makeText(getActivity(), "还未设置时间", Toast.LENGTH_SHORT).show();
+            return false;
+        }
+        int time = Integer.parseInt(binding.etContinue.getText().toString());
+        if (time == 0) {
+            Toast.makeText(getActivity(), "不能设置0小时", Toast.LENGTH_SHORT).show();
+            return false;
+        }
+        SPUtil.setPrePrintLastTime(getContext(), (long) ((long) time * 60 * 60 * 1000));
+        SPUtil.setPrintStartTime(getContext(), System.currentTimeMillis());
+        return true;
+    }
+
+    @SuppressLint("SetTextI18n")
+    private void updateStatistic() {
+        binding.tvPrintCount.setText("打印次数: " + total);
+        binding.tvPrintSuccess.setText("成功次数: " + successTime);
+        binding.tvPrintFail.setText("失败次数: " + failedTime);
+    }
+
+    private void reset() {
+        total = 0;
+        successTime = 0;
+        failedTime = 0;
+        mHandler.sendEmptyMessage(MSG_UPDATE_STATISTIC);
+        SPUtil.setPrePrintLastTime(getContext(), 0L);
+        SPUtil.setPrintStartTime(getContext(), 0);
     }
 
     private void disableBtn() {
@@ -211,7 +275,7 @@ public class MainFragment extends Fragment {
     */
 
 
-    class CustomCallable implements Callable<Boolean> {
+    class SingleTaskCallable implements Callable<Boolean> {
 
         @Override
         public Boolean call() throws Exception {
@@ -223,11 +287,19 @@ public class MainFragment extends Fragment {
                 try {
 
                     for (int i = 0; i < subcontract.packageCount; i++) {
-                        sendMessageToPoint(subcontract.getBytes()[i]);
+                        int res = sendMessageToPoint(subcontract.getBytes()[i]);
+
+                        if (res < 0) {
+                            failedTime++;
+                            total++;
+                            mHandler.sendEmptyMessage(MSG_UPDATE_STATISTIC);
+                            return false;
+                        }
+
                         isReceived = false;
-                        PrintCMD.isSecond = false;
                         time = 0;
                         while (time < 10000) {
+                            Thread.sleep(50);
                             if (readMessageFromPoint()) {
                                 isReceived = true;
                                 break;
@@ -235,34 +307,106 @@ public class MainFragment extends Fragment {
                                 Thread.sleep(50);
                                 Log.e("readMsg", "send status request");
                                 sendMessageToPoint(PrintCMD.queryStatus());
-                                PrintCMD.isSecond = true;
                             }
                             Log.d(TAG, "" + time);
                             time++;
                         }
 
                         if (!isReceived) {
+
                             return false;
                         }
                     }
+                    successTime++;
+                    total++;
+                    mHandler.sendEmptyMessage(MSG_UPDATE_STATISTIC);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
                 sendMessageToPoint(PrintCMD.getPreInfo());
                 Thread.sleep(50);
-                sendMessageToPoint(PrintCMD.cutPaper());
+                if (binding.cbCutPaper.isChecked()) {
+                    sendMessageToPoint(PrintCMD.cutPaper());
+                }
             }
             mHandler.sendEmptyMessageDelayed(MSG_ENABLE_BTN, 1000);
             return true;
         }
     }
 
+    class MultiTasksCallable implements Callable<Boolean> {
 
-    public synchronized void sendMessageToPoint(byte[] buffer) throws InterruptedException {
+        @Override
+        public Boolean call() throws Exception {
+            int time;
+            synchronized (this) {
+                boolean isReceived;
+                Subcontract subcontract = new Subcontract();
+                subcontract.goSubcontract(bytes);
+                try {
+                    while (!shouldTerminal()) {
+                        for (int i = 0; i < subcontract.packageCount; i++) {
+                            sendMessageToPoint(subcontract.getBytes()[i]);
+                            isReceived = false;
+                            time = 0;
+                            while (time < 10000) {
+                                if (readMessageFromPoint()) {
+                                    isReceived = true;
+                                    break;
+                                } else {
+                                    Thread.sleep(50);
+                                    Log.e("readMsg", "send status request");
+                                    sendMessageToPoint(PrintCMD.queryStatus());
+                                }
+                                Log.d(TAG, "" + time);
+                                time++;
+                            }
 
+                            if (!isReceived) {
+                                failedTime++;
+                                total++;
+                                mHandler.sendEmptyMessage(MSG_UPDATE_STATISTIC);
+                                return false;
+                            }
+                        }
+                        successTime++;
+                        total++;
+                        mHandler.sendEmptyMessage(MSG_UPDATE_STATISTIC);
+
+                        Thread.sleep(intervalTime);
+                    }
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                sendMessageToPoint(PrintCMD.getPreInfo());
+                Thread.sleep(50);
+                if (binding.cbCutPaper.isChecked()) {
+                    sendMessageToPoint(PrintCMD.cutPaper());
+                }
+            }
+            mHandler.sendEmptyMessageDelayed(MSG_ENABLE_BTN, 1000);
+            return true;
+        }
+    }
+
+    public boolean shouldTerminal() {
+        if (System.currentTimeMillis() - SPUtil.getPrintStartTime(getContext())
+                > SPUtil.getPrintLastTime(getContext()) || shouldStop) {
+            Log.d(TAG, "EXIT");
+            Log.d(TAG, System.currentTimeMillis() + " current");
+            Log.d(TAG, SPUtil.getPrintLastTime(getContext()) + " continue");
+            Log.d(TAG, SPUtil.getPrintStartTime(getContext()) + " start");
+            return true;
+        }
+        return false;
+    }
+
+
+    public synchronized int sendMessageToPoint(byte[] buffer) throws InterruptedException {
         int i = PrintApplication.getInstance().getPrinterPort().sendMsg(buffer);
         System.out.println("send result-->:::" + i);
         Log.e(TAG, "sendMessageToPoint " + i);
+        return i;
     }
 
     private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
@@ -280,7 +424,12 @@ public class MainFragment extends Fragment {
     private synchronized boolean readMessageFromPoint() throws InterruptedException {
         boolean isNormal = false;
         byte[] recvbuf = PrintApplication.getInstance().getPrinterPort().readMsg();
-        Log.e(TAG, "Received " + byteToHexStr(recvbuf[0]));
+
+        if ((recvbuf[0] & 0xf0) != 0) {
+            return false;
+        }
+
+        Log.e(TAG, "Received " + PrintUtil.byteToHexStr(recvbuf[0]));
         if (recvbuf[0] == 0) {
             isNormal = true;
             mHandler.sendEmptyMessage(MSG_SET_TIPS_INVISIBILITY);
@@ -293,13 +442,6 @@ public class MainFragment extends Fragment {
         }
 
         return isNormal;
-    }
-
-    public String byteToHexStr(byte b) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(hexCode[(b >> 4) & 0xF]);
-        sb.append(hexCode[(b) & 0xF]);
-        return sb.toString();
     }
 
 }

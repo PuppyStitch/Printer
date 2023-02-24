@@ -21,6 +21,15 @@ public class PrintUtil {
 
     public static byte[] bytes;
 
+    private static final char[] hexCode = "0123456789ABCDEF".toCharArray();
+
+    public static String byteToHexStr(byte b) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(hexCode[(b >> 4) & 0xF]);
+        sb.append(hexCode[(b) & 0xF]);
+        return sb.toString();
+    }
+
     public static byte[] meiTuan(Context context, PrinterLayout.ViewToBitmapListener listener) {
 
         int maxSize = 24;

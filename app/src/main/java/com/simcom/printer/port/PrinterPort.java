@@ -7,6 +7,8 @@ import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
 import android.util.Log;
 
+import com.simcom.printer.utils.PrintUtil;
+
 public class PrinterPort {
 
     private static final String TAG = "PrinterPort";
@@ -45,12 +47,15 @@ public class PrinterPort {
     }
 
     public int sendMsg(byte[] data) {
-        return usbDeviceConnection.bulkTransfer(epBulkOut, data, data.length, 0);
+        int res = usbDeviceConnection.bulkTransfer(epBulkOut, data, data.length, 0);
+        Log.d(TAG, "send " + res);
+        return res;
     }
 
     public byte[] readMsg() {
         byte[] rec = new byte[64];
         usbDeviceConnection.bulkTransfer(epBulkIn, rec, rec.length, 50);
+        Log.d(TAG, "read " + PrintUtil.byteToHexStr(rec[0]));
         return rec;
     }
 
@@ -63,6 +68,7 @@ public class PrinterPort {
 
     public interface InterfaceListener {
         void setConnection(UsbDeviceConnection connection);
+
         void setUsbEndpointData(UsbEndpointData data);
     }
 

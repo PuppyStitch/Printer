@@ -36,7 +36,7 @@ public class PrintApplication extends Application implements Application.Activit
         return printApplication;
     }
 
-    private void init() {
+    public void init() {
         printerFinder = new PrinterFinder(this, this);
         printerFinder.registerBroadcast();
         printerFinder.enumerateDevices();

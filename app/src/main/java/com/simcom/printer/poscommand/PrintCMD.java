@@ -71,12 +71,6 @@ public class PrintCMD {
         bytes[2] = (byte) 0x41;
         bytes[3] = (byte) 0x00;
         return bytes;
-
-
-        //            bytes[j][240 * 72 + 8 + 4 - 4] = 0x1d;              // 切纸指令
-//            bytes[j][240 * 72 + 8 + 4 - 3] = 0x76;
-//            bytes[j][240 * 72 + 8 + 4 - 2] = 0x30;
-//            bytes[j][240 * 72 + 8 + 4 - 1] = 0x00;
     }
 
     public static byte[] getVersionInfo() {

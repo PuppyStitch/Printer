@@ -38,8 +38,8 @@ public class PrintApplication extends Application implements Application.Activit
 
     public void init() {
         printerFinder = new PrinterFinder(this, this);
-        printerFinder.registerBroadcast();
         printerFinder.enumerateDevices();
+        printerFinder.getDeviceInterface();
         UsbEndpointData usbEndpointData = printerFinder.assignEndpoint();
         usbDeviceConnection = printerFinder.openDevice();
 

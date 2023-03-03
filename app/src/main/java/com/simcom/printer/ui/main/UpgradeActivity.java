@@ -1,5 +1,7 @@
 package com.simcom.printer.ui.main;
 
+import static android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
+
 import android.content.ActivityNotFoundException;
 import android.content.ContentResolver;
 import android.content.ContentUris;
@@ -11,14 +13,18 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.FileUtils;
+import android.os.Handler;
+import android.os.Message;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
 import android.webkit.MimeTypeMap;
 import android.widget.Button;
+import android.widget.ProgressBar;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
@@ -45,18 +51,46 @@ public class UpgradeActivity extends AppCompatActivity {
 
     private static final int CHOOSE_FILE_CODE = 1000;
 
-    private byte[][] bytes = new byte[256][192];
+    private byte[] bytes;
 
     private Button upgrade, file;
 
     Context mContext;
+    ProgressBar process;
+
+    private final int MSG_UPGRADING = 1;
+    private final  int MSG_UPGRADE_FINISH = 2;
+
+    private boolean isUpgradeSuccess = false;
+
+    Handler handler = new Handler() {
+        @Override
+        public void handleMessage(@NonNull Message msg) {
+            super.handleMessage(msg);
+            switch (msg.what) {
+                case MSG_UPGRADING:
+                    process.setVisibility(View.VISIBLE);
+                    file.setVisibility(View.GONE);
+                    upgrade.setVisibility(View.GONE);
+                    break;
+                case MSG_UPGRADE_FINISH:
+                    file.setVisibility(View.VISIBLE);
+                    upgrade.setVisibility(View.VISIBLE);
+                    process.setVisibility(View.GONE);
+                    showResult();
+                    break;
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getWindow().addFlags(FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.activity_upgrade);
         upgrade = findViewById(R.id.upgrade_btn);
         file = findViewById(R.id.file_btn);
+        process = findViewById(R.id.progress_circular);
         mContext = this;
     }
 
@@ -69,9 +103,15 @@ public class UpgradeActivity extends AppCompatActivity {
         });
 
         upgrade.setOnClickListener(v -> {
+            handler.sendEmptyMessage(MSG_UPGRADING);
             Thread thread = new Thread(runnable);
             thread.start();
         });
+    }
+
+    public void showResult() {
+        String s = isUpgradeSuccess ? "升级成功" : "升级失败";
+        Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
     }
 
 //    @SuppressLint("NewApi")
@@ -95,13 +135,14 @@ public class UpgradeActivity extends AppCompatActivity {
 //        }
 //    }
 
+    @RequiresApi(api = Build.VERSION_CODES.Q)
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         if (resultCode == RESULT_OK) {
             if (requestCode == CHOOSE_FILE_CODE) {
                 Uri uri = data.getData();
-                byte[] bs = readFile(uriToFileApiQ(uri, this));
-                if (bs.length > 0) {
+                bytes = readFile(uriToFileApiQ(uri, this));
+                if (bytes.length > 0) {
                     file.setText("文件读取成功");
                 }
             }
@@ -109,6 +150,7 @@ public class UpgradeActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.Q)
     public static File uriToFileApiQ(Uri uri, Context context) {
         File file = null;
         if (uri == null)
@@ -162,16 +204,18 @@ public class UpgradeActivity extends AppCompatActivity {
         public void run() {
             try {
                 byte[] res;
-//                PrintApplication.getInstance().getPrinterPort().sendMsg(PrintCMD.requestUpdateFW());
-//                Thread.sleep(5000);
-//                PrintApplication.getInstance().init();
-//                PrintApplication.getInstance().getPrinterPort().readMsg();
+                PrintApplication.getInstance().getPrinterPort().sendMsg(PrintCMD.requestUpdateFW());
+                Thread.sleep(5000);
+                PrintApplication.getInstance().init();
+                Thread.sleep(15000);
+                PrintApplication.getInstance().getPrinterPort().readMsg();
                 PrintApplication.getInstance().getPrinterPort().sendMsg(PrintCMD.getFirstFrame());
                 PrintApplication.getInstance().getPrinterPort().readMsg();
 
                 UpgradeCon upgradeCon = new UpgradeCon();
-                upgradeCon.go(DataUtils.readFileFromAssets(mContext, null,
-                        "s05_1.2.1(1).bin"));           // s05_1.2.1.bin
+                upgradeCon.go(bytes);
+//                upgradeCon.go(DataUtils.readFileFromAssets(mContext, null,
+//                        "s05_1.2.1(1).bin"));           // s05_1.2.1.bin
                 Log.d("SEND SIZE", upgradeCon.packages + "");
                 for (int i = 0; i <= upgradeCon.packages; i++) {
                     Log.d("Send Index", i + "");
@@ -186,6 +230,10 @@ public class UpgradeActivity extends AppCompatActivity {
                 Thread.sleep(50);
                 res = PrintApplication.getInstance().getPrinterPort().readMsg();
                 Log.d(TAG, "end res: " + PrintUtil.byteToHexStr(res[0]));
+                isUpgradeSuccess = PrintUtil.byteToHexStr(res[0]).equals("06");
+                handler.sendEmptyMessage(MSG_UPGRADE_FINISH);
+                // show tips that upgrade is success or not?
+
 
             } catch (InterruptedException e) {
                 e.printStackTrace();

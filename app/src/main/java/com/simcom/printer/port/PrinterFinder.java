@@ -70,7 +70,7 @@ public class PrinterFinder {
                                 usbDeviceConnection = usbManager.openDevice(usbDevice);
                                 if (usbDeviceConnection.claimInterface(usbInterface, true)) {
                                     Log.i(TAG, "open设备成功");
-                                    interfaceListener.setConnection(usbDeviceConnection);
+//                                    interfaceListener.setConnection(usbDeviceConnection);
                                 } else {
                                     Log.i(TAG, "open设备失败");
                                 }
@@ -98,12 +98,12 @@ public class PrinterFinder {
             System.out.println("result-->" + device.getVendorId() + ":" + device.getProductId());
             if (device.getVendorId() == 6645 && device.getProductId() == 12869) {
                 usbDevice = device;             // 获取USBDevice
-                usbManager.requestPermission(usbDevice, permissionIntent);
+//                usbManager.requestPermission(usbDevice, permissionIntent);
             }
         }
     }
 
-    private void getDeviceInterface() {
+    public void getDeviceInterface() {
         if (usbDevice != null) {
             System.out.println("result-->:" + usbDevice.getInterfaceCount());
             usbInterface = usbDevice.getInterface(0);
@@ -126,7 +126,7 @@ public class PrinterFinder {
                             usbEndpointData.setIn(ep);
                             System.out.println("result-->Find the BulkEndpointIn:" + "index:" + i + "," + "使用端点号：" + ep.getEndpointNumber());
                         }
-                        interfaceListener.setUsbEndpointData(usbEndpointData);
+//                        interfaceListener.setUsbEndpointData(usbEndpointData);
                         break;
                     case UsbConstants.USB_ENDPOINT_XFER_CONTROL://控制
                         epControl = ep;
